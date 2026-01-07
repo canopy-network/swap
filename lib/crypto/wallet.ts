@@ -78,7 +78,7 @@ export async function encryptPrivateKey(
     // Import key for Web Crypto API
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
-      derivedKey,
+      derivedKey.buffer as ArrayBuffer,
       { name: "AES-GCM" },
       false,
       ["encrypt"],
@@ -89,9 +89,9 @@ export async function encryptPrivateKey(
 
     // Encrypt private key with AES-GCM
     const encryptedData = await crypto.subtle.encrypt(
-      { name: "AES-GCM", iv: nonce },
+      { name: "AES-GCM", iv: nonce.buffer as ArrayBuffer },
       cryptoKey,
-      privateKeyBytes,
+      privateKeyBytes.buffer as ArrayBuffer,
     );
 
     return {
@@ -131,7 +131,7 @@ export async function decryptPrivateKey(
     // Import key for Web Crypto API
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
-      derivedKey,
+      derivedKey.buffer as ArrayBuffer,
       { name: "AES-GCM" },
       false,
       ["decrypt"],
@@ -142,9 +142,9 @@ export async function decryptPrivateKey(
 
     // Decrypt private key with AES-GCM
     const decryptedData = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: nonce },
+      { name: "AES-GCM", iv: nonce.buffer as ArrayBuffer },
       cryptoKey,
-      encryptedData,
+      encryptedData.buffer as ArrayBuffer,
     );
 
     return new Uint8Array(decryptedData);

@@ -1,7 +1,7 @@
 import { ArrowDown, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { TradingPair } from "@/types/trading-pair";
-import { deleteOrder, editOrder } from "@/services/orders";
+import { submitSignedTransaction } from "@/services/orders";
 import { numberToBlockchainUValue } from "@/utils/blockchain";
 import { ProcessedTransaction } from "@/types/transactions";
 import { useState } from "react";
@@ -10,6 +10,13 @@ import { toast } from "sonner";
 import { getKeyfilePassword } from "@/utils/keyfile-session";
 import ProgressToast from "../headless-toast/progress-toast";
 import AssetCard from "../asset-card";
+import {
+  createSignedEditOrder,
+  createSignedDeleteOrder,
+} from "@/lib/crypto/utils/order";
+import { MINIMUN_FEE } from "@/constants/blockchain";
+import { usePollingData } from "@/context/polling-context";
+import { sliceAddress } from "@/utils/address";
 
 interface EditCloseOrderSummaryProps {
   tradingPair: TradingPair;
@@ -33,9 +40,11 @@ function EditCloseOrderSummary({
   transaction,
 }: EditCloseOrderSummaryProps) {
   const { selectedCanopyWallet } = useWallets();
+  const { height } = usePollingData();
 
   const [payInput, setPayInput] = useState(payAmount);
   const [receiveInput, setReceiveInput] = useState(receiveAmount);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   const payAsset = isBuySide ? tradingPair.baseAsset : tradingPair.quoteAsset;
   const receiveAsset = isBuySide
@@ -43,93 +52,136 @@ function EditCloseOrderSummary({
     : tradingPair.baseAsset;
 
   const handleEditAskOrder = async () => {
+    if (!selectedCanopyWallet?.filename || !transaction.rawData.order) {
+      toast("Error", {
+        description: "No Canopy wallet or order selected",
+        duration: 5000,
+      });
+      return;
+    }
+
+    const password = getKeyfilePassword(selectedCanopyWallet.filename);
+    if (!password) {
+      toast("Error", {
+        description:
+          "Keyfile password not found. Please re-authenticate your keyfile.",
+        duration: 5000,
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      if (transaction.rawData.order && selectedCanopyWallet) {
-        const password = getKeyfilePassword(selectedCanopyWallet.filename);
-        if (!password) {
-          toast("Error", {
-            description:
-              "Keyfile password not found. Please re-authenticate your keyfile.",
-            duration: 5000,
-          });
-          return;
-        }
-
-        await editOrder({
-          address: selectedCanopyWallet.address,
-          amount: numberToBlockchainUValue(Number(payInput)),
-          committees: "1",
-          data: "",
-          memo: "",
+      const signedTx = await createSignedEditOrder(
+        selectedCanopyWallet,
+        password,
+        {
           orderId: transaction.rawData.order.id,
-          password: password,
-          receiveAddress: transaction.rawData.order.sellerReceiveAddress,
-          receiveAmount: numberToBlockchainUValue(Number(receiveInput)),
-          submit: true,
-          fee: 0,
-        });
-
-        toast("Transaction Status", {
-          description: (
-            <ProgressToast
-              payAssetSymbol={payAsset.symbol}
-              receiveAssetSymbol={receiveAsset.symbol}
-              duration={20000}
-              title="Edit order in Progress"
-            />
+          chainId: tradingPair.committee,
+          data: sliceAddress(tradingPair.contractAddress),
+          amountForSale: numberToBlockchainUValue(Number(payInput)),
+          requestedAmount: numberToBlockchainUValue(Number(receiveInput)),
+          sellerReceiveAddress: sliceAddress(
+            transaction.rawData.order.sellerReceiveAddress,
           ),
-          duration: 20000,
-        });
-      }
+        },
+        {
+          networkID: tradingPair.committee,
+          chainID: 1,
+          currentHeight: height?.height || 0,
+          fee: MINIMUN_FEE,
+        },
+      );
+
+      // Submit the signed transaction to the Canopy network
+      await submitSignedTransaction(signedTx, tradingPair.committee);
+
+      toast("Transaction Status", {
+        description: (
+          <ProgressToast
+            payAssetSymbol={payAsset.symbol}
+            receiveAssetSymbol={receiveAsset.symbol}
+            duration={20000}
+            title="Edit order in Progress"
+          />
+        ),
+        duration: 20000,
+      });
 
       onClose();
     } catch (error) {
-      console.error(error);
+      toast("Error", {
+        description: `Failed to edit order: ${error}`,
+        duration: 5000,
+        richColors: true,
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleDeleteAskOrder = async () => {
+    if (!selectedCanopyWallet?.filename || !transaction.rawData.order) {
+      toast("Error", {
+        description: "No Canopy wallet or order selected",
+        duration: 5000,
+      });
+      return;
+    }
+
+    const password = getKeyfilePassword(selectedCanopyWallet.filename);
+    if (!password) {
+      toast("Error", {
+        description:
+          "Keyfile password not found. Please re-authenticate your keyfile.",
+        duration: 5000,
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      if (transaction.rawData.order && selectedCanopyWallet) {
-        const password = getKeyfilePassword(selectedCanopyWallet.filename);
-        if (!password) {
-          toast("Error", {
-            description:
-              "Keyfile password not found. Please re-authenticate your keyfile.",
-            duration: 5000,
-          });
-          return;
-        }
-
-        // Prepare delete order payload
-        const payload = {
-          address: selectedCanopyWallet.address,
-          committees: "1",
+      const signedTx = await createSignedDeleteOrder(
+        selectedCanopyWallet,
+        password,
+        {
           orderId: transaction.rawData.order.id,
-          fee: 0,
-          memo: "",
-          submit: true,
-          password: password,
-        };
-        // Dynamically import deleteOrder to avoid circular deps if any
-        await deleteOrder(payload);
+          chainId: tradingPair.committee,
+        },
+        {
+          networkID: tradingPair.committee,
+          chainID: 1,
+          currentHeight: height?.height || 0,
+          fee: MINIMUN_FEE,
+        },
+      );
 
-        toast("Transaction Status", {
-          description: (
-            <ProgressToast
-              payAssetSymbol={payAsset.symbol}
-              receiveAssetSymbol={receiveAsset.symbol}
-              duration={20000}
-              title="Cancelation in Progress"
-            />
-          ),
-          duration: 20000,
-        });
-      }
+      // Submit the signed transaction to the Canopy network
+      await submitSignedTransaction(signedTx, tradingPair.committee);
+
+      toast("Transaction Status", {
+        description: (
+          <ProgressToast
+            payAssetSymbol={payAsset.symbol}
+            receiveAssetSymbol={receiveAsset.symbol}
+            duration={20000}
+            title="Cancelation in Progress"
+          />
+        ),
+        duration: 20000,
+      });
 
       onClose();
     } catch (error) {
-      console.error(error);
+      toast("Error", {
+        description: `Failed to delete order: ${error}`,
+        duration: 5000,
+        richColors: true,
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -170,17 +222,19 @@ function EditCloseOrderSummary({
         <div className="flex flex-col gap-2 my-2">
           <Button
             variant="ghost"
-            className="w-full h-12 text-lg font-medium rounded-xl mt-auto bg-primary text-primary-foreground"
+            className="w-full h-12 text-lg font-medium rounded-xl mt-auto bg-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleEditAskOrder}
+            disabled={isLoading}
           >
-            Edit Ask Order
+            {isLoading ? "Processing..." : "Edit Ask Order"}
           </Button>
           <Button
             variant="secondary"
-            className="w-full h-12 text-lg font-medium rounded-xl mt-auto text-error-foreground bg-error"
+            className="w-full h-12 text-lg font-medium rounded-xl mt-auto text-error-foreground bg-error disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleDeleteAskOrder}
+            disabled={isLoading}
           >
-            Cancel Ask Order
+            {isLoading ? "Processing..." : "Cancel Ask Order"}
           </Button>
         </div>
       </div>

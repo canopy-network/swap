@@ -129,6 +129,56 @@ export function createOrderMessage(
 }
 
 /**
+ * Creates an EditOrder transaction message (DEX)
+ *
+ * Mirrors fsm.NewEditOrderTx() from canopy/fsm/transaction.go
+ *
+ * @param orderId - Hex-encoded order ID
+ * @param chainId - Committee chain ID
+ * @param data - Hex-encoded order data
+ * @param amountForSale - New amount selling
+ * @param requestedAmount - New amount requesting
+ * @param sellerReceiveAddress - Hex-encoded receive address
+ * @returns MessageEditOrder payload
+ */
+export function createEditOrderMessage(
+  orderId: string,
+  chainId: number,
+  data: string,
+  amountForSale: number,
+  requestedAmount: number,
+  sellerReceiveAddress: string,
+): TransactionMessage {
+  return {
+    orderId,
+    chainId,
+    data,
+    amountForSale,
+    requestedAmount,
+    sellerReceiveAddress,
+  };
+}
+
+/**
+ * Creates a DeleteOrder transaction message (DEX)
+ *
+ * Mirrors fsm.NewDeleteOrderTx() from canopy/fsm/transaction.go
+ *
+ * @param orderId - Hex-encoded order ID
+ * @param chainId - Committee chain ID
+ * @returns MessageDeleteOrder payload
+ */
+export function createDeleteOrderMessage(
+  orderId: string,
+  chainId: number,
+): TransactionMessage {
+  return {
+    orderId,
+    chainId,
+  };
+}
+
+/**
  * Validates transaction parameters before signing
  *
  * @param params - Transaction parameters
